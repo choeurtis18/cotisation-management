@@ -1,0 +1,44 @@
+# Node
+node_modules/
+
+.env
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Logs
+logs/
+*.log
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Build
+/dist
+/build
+
+# VSCode
+.vscode/
+
+# Test coverage
+coverage/
+
+# Mac
+*.DS_Store
+
+# Backend data
+backend/data/*.json
+!backend/data/*.example.json
+
+# Misc
+*.local
+*.swp
+
+# IDE
+.idea/
+*.iml
+
+# Git
+.git/
