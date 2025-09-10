@@ -85,11 +85,20 @@ const initializeDatabase = async () => {
 const startServer = async () => {
   await initializeDatabase();
   
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Serveur démarré sur le port ${PORT}`);
     console.log(`📊 API disponible sur http://localhost:${PORT}`);
     console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
     console.log(`👥 Adhérents: http://localhost:${PORT}/api/adherents`);
+  });
+
+  // Gestion gracieuse de l'arrêt
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM reçu, arrêt gracieux du serveur...');
+    server.close(() => {
+      console.log('Serveur fermé');
+      process.exit(0);
+    });
   });
 };
 
