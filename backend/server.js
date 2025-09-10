@@ -1,10 +1,11 @@
 const express = require('express');
+const dotenv = require('dotenv');
 const cors = require('cors');
-const path = require('path');
 const fileManager = require('./utils/fileManager');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+require('dotenv').config();
+const PORT = process.env.PORT;
 
 // Middleware
 app.use(cors());

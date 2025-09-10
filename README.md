@@ -44,11 +44,15 @@ npm start
 ## Fonctionnalités
 
 - ✅ Gestion des adhérents (CRUD)
-- ⏳ Gestion des cotisations
-- ⏳ Gestion des cotisations mensuelles
-- ⏳ Interface React avec TailwindCSS
-- ⏳ Export PDF
-- ⏳ Calculs automatiques
+- ✅ Gestion des cotisations (CRUD)
+- ✅ Gestion des cotisations mensuelles (CRUD)
+- ✅ Interface React avec TailwindCSS (responsive, menu burger)
+- ✅ Export CSV (remplace l'export PDF)
+- ✅ Calculs automatiques (total attendu, versé, avance/retard)
+- ✅ Filtrage par année/mois
+- ✅ Responsive complet (mobile/tablette/desktop)
+
+L'export PDF a été remplacé par un export CSV universel plus adapté.
 
 ## Données
 
@@ -61,4 +65,35 @@ Les données sont stockées dans des fichiers JSON locaux dans `backend/data/`:
 
 Voir `plan.md` pour le plan de développement détaillé en 10 étapes.
 
-**Étape actuelle :** Étape 1 - Setup Initial & Backend de Base ✅
+**Étape actuelle :** Finitions & Optimisations UI/UX ✅
+
+---
+
+## Déploiement Railway (hébergement gratuit)
+
+Le projet est un monorepo avec deux dossiers principaux : `frontend` (React) et `backend` (NodeJS/Express).
+
+### 1. Déployer le backend (API NodeJS)
+- Crée un nouveau projet sur https://railway.com
+- Connecte ton repo GitHub ou utilise Railway CLI
+- Choisis le dossier `backend` comme racine du service
+- Ajoute une variable d'environnement si besoin (`PORT=3001` par défaut)
+- Lance le service (Railway détecte automatiquement Express)
+
+### 2. Déployer le frontend (React)
+- Ajoute un nouveau service "Static Site" dans Railway
+- Choisis le dossier `frontend` comme racine du service
+- Commande de build : `npm run build`
+- Dossier de sortie : `build`
+- Configure l'URL de l'API backend dans le `.env` du frontend si besoin (`REACT_APP_API_URL`)
+
+### 3. Structure du projet
+```
+/ (racine)
+  /backend   # NodeJS/Express, API, fichiers JSON
+  /frontend  # React, TailwindCSS
+```
+
+---
+
+Pour plus de détails, voir le plan.md ou la documentation Railway.

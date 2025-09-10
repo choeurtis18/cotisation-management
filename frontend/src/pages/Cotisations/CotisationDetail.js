@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Header from '../../components/Layout/Header';
 import Button from '../../components/Common/Button';
@@ -7,6 +7,8 @@ import Modal from '../../components/Common/Modal';
 import { cotisationsService, cotisationsMensuellesService, adherentsService } from '../../services/api';
 
 const CotisationDetail = () => {
+  const API_URL = process.env.REACT_APP_API_URL;
+
   const { id } = useParams();
   const navigate = useNavigate();
   const [cotisation, setCotisation] = useState(null);
@@ -35,24 +37,13 @@ const CotisationDetail = () => {
   });
 
   const currentYear = new Date().getFullYear();
-const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
+  const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
   const moisNames = [
     'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
     'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
   ];
 
-  useEffect(() => {
-    loadCotisation();
-    loadAdherents();
-  }, [id]);
-
-  useEffect(() => {
-    if (cotisation) {
-      loadCotisationsMensuelles();
-    }
-  }, [cotisation, selectedYear]);
-
-  const loadCotisation = async () => {
+  const loadCotisation = useCallback(async () => {
     try {
       const response = await cotisationsService.getById(id);
       setCotisation(response.data);
@@ -61,18 +52,20 @@ const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
       setError('Erreur lors du chargement de la cotisation');
       console.error(err);
     }
-  };
+  }, [id]);
 
-  const loadAdherents = async () => {
+  const loadAdherents = useCallback(async () => {
     try {
       const response = await adherentsService.getAll();
       setAdherents(response.data);
+      setError(null);
     } catch (err) {
-      console.error('Erreur chargement adhérents:', err);
+      setError('Erreur lors du chargement des adhérents');
+      console.error(err);
     }
-  };
+  }, []);
 
-  const loadCotisationsMensuelles = async () => {
+  const loadCotisationsMensuelles = useCallback(async () => {
     try {
       setLoading(true);
       const response = await cotisationsMensuellesService.getAll({
@@ -87,12 +80,23 @@ const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, selectedYear]);
+
+  useEffect(() => {
+    loadCotisation();
+    loadAdherents();
+  }, [loadCotisation, loadAdherents]);
+
+  useEffect(() => {
+    if (cotisation) {
+      loadCotisationsMensuelles();
+    }
+  }, [cotisation, selectedYear, loadCotisationsMensuelles]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('http://localhost:3001/api/cotisations-mensuelles', {
+      const response = await fetch(`${API_URL}/cotisations-mensuelles`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -135,7 +139,7 @@ const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch(`http://localhost:3001/api/cotisations-mensuelles/${editingCotisation.id}`, {
+      const response = await fetch(`${API_URL}/cotisations-mensuelles/${editingCotisation.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -179,7 +183,7 @@ const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
 
   const handleDownloadCSV = async () => {
     try {
-      const response = await fetch(`http://localhost:3001/api/export/cotisation/${id}/${selectedYear}`);
+      const response = await fetch(`${API_URL}/export/cotisation/${id}/${selectedYear}`);
       
       if (response.ok) {
         const blob = await response.blob();
@@ -289,7 +293,7 @@ const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
       <Header title={cotisation ? cotisation.nom : 'Chargement...'} />
       
       <div className="flex-1 p-6">
-        <div className="mb-6 flex justify-between items-center">
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:space-x-4">
           <Button
             variant="outline"
             onClick={() => navigate('/cotisations')}
@@ -297,7 +301,7 @@ const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
             ← Retour à la liste
           </Button>
           
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:space-x-4">
             <Button
               onClick={() => handleDownloadCSV()}
               className="bg-green-600 hover:bg-green-700 text-white"

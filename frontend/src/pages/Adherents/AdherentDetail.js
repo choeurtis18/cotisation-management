@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Header from '../../components/Layout/Header';
 import Button from '../../components/Common/Button';
@@ -25,25 +25,14 @@ const AdherentDetail = () => {
   });
 
   // Génération dynamique de la liste des années
-const currentYear = new Date().getFullYear();
-const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
+  const currentYear = new Date().getFullYear();
+  const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
   const moisNames = [
     'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
     'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
   ];
 
-  useEffect(() => {
-    loadAdherent();
-    loadAllCotisations();
-  }, [id]);
-
-  useEffect(() => {
-    if (adherent) {
-      loadCotisations();
-    }
-  }, [adherent, selectedYear]);
-
-  const loadAdherent = async () => {
+  const loadAdherent = useCallback(async () => {
     try {
       const response = await adherentsService.getById(id);
       setAdherent(response.data);
@@ -52,30 +41,43 @@ const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
       setError('Erreur lors du chargement de l\'adhérent');
       console.error(err);
     }
-  };
+  }, [id]);
 
-  const loadAllCotisations = async () => {
+  const loadAllCotisations = useCallback(async () => {
     try {
       const response = await cotisationsService.getAll();
       setAllCotisations(response.data);
+      setError(null);
     } catch (err) {
-      console.error('Erreur chargement cotisations:', err);
+      setError('Erreur lors du chargement des cotisations');
+      console.error(err);
     }
-  };
+  }, []);
 
-  const loadCotisations = async () => {
+  const loadCotisations = useCallback(async () => {
     try {
       setLoading(true);
       const response = await adherentsService.getCotisationsByYear(id, selectedYear);
       setCotisations(response.data);
       setError(null);
     } catch (err) {
-      setError('Erreur lors du chargement des cotisations');
+      setError('Erreur lors du chargement des cotisations de l\'adhérent');
       console.error(err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, selectedYear]);
+
+  useEffect(() => {
+    loadAdherent();
+    loadAllCotisations();
+  }, [id, loadAdherent, loadAllCotisations]);
+
+  useEffect(() => {
+    if (adherent) {
+      loadCotisations();
+    }
+  }, [adherent, selectedYear, loadCotisations]);
 
   const handleEditCotisation = (cotisation) => {
     setEditingCotisation(cotisation);
@@ -141,7 +143,7 @@ const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
       <Header title={adherent ? `${adherent.prenom} ${adherent.nom}` : 'Chargement...'} />
       
       <div className="flex-1 p-6">
-        <div className="mb-6 flex justify-between items-center">
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:space-x-4">
           <Button
             variant="outline"
             onClick={() => navigate('/adherents')}
@@ -149,7 +151,7 @@ const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
             ← Retour à la liste
           </Button>
           
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:space-x-4">
             <select
               value={availableYears.includes(selectedYear) ? selectedYear : 'other'}
               onChange={e => {
@@ -204,7 +206,7 @@ const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
               cotisations.map((cotisation) => (
                 <div key={cotisation.id} className="bg-white shadow rounded-lg overflow-hidden">
                   <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-col justify-between">
                       <div>
                         <a href={`/cotisations/${cotisation.cotisationId}`}>
                           <h3 className="text-lg font-medium text-gray-900">
@@ -213,29 +215,31 @@ const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
                         </a>
                         <p className="text-sm text-gray-500">Année {selectedYear}</p>
                       </div>
-                      <div className="flex items-center space-x-4">
-                        <div className="flex space-x-4 text-sm">
-                          <span className="text-gray-600">
-                            Moyenne: <span className="font-medium">{cotisation.moyenneCotisation}€</span>
-                          </span>
-                          <span className="text-gray-600">
-                            Total attendu: <span className="font-medium">{cotisation.totalAttendu}€</span>
-                          </span>
-                          <span className="text-gray-600">
-                            Total versé: <span className="font-medium">{cotisation.totalVersee}€</span>
-                          </span>
-                          {cotisation.retard > 0 && (
-                            <span className="text-red-600">
-                              Retard: <span className="font-medium">{cotisation.retard}€</span>
+                      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                        <div className="overflow-x-auto">
+                          <div className="flex space-x-4 text-sm min-w-max">
+                            <span className="text-gray-600 whitespace-nowrap">
+                              Moyenne: <span className="font-medium">{cotisation.moyenneCotisation}€</span>
                             </span>
-                          )}
-                          {cotisation.avance > 0 && (
-                            <span className="text-green-600">
-                              Avance: <span className="font-medium">{cotisation.avance}€</span>
+                            <span className="text-gray-600 whitespace-nowrap">
+                              Total attendu: <span className="font-medium">{cotisation.totalAttendu}€</span>
                             </span>
-                          )}
+                            <span className="text-gray-600 whitespace-nowrap">
+                              Total versé: <span className="font-medium">{cotisation.totalVersee}€</span>
+                            </span>
+                            {cotisation.retard > 0 && (
+                              <span className="text-red-600 whitespace-nowrap">
+                                Retard: <span className="font-medium">{cotisation.retard}€</span>
+                              </span>
+                            )}
+                            {cotisation.avance > 0 && (
+                              <span className="text-green-600 whitespace-nowrap">
+                                Avance: <span className="font-medium">{cotisation.avance}€</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex space-x-2">
+                        <div className="flex flex-col sm:flex-row gap-2 sm:gap-0 space-x-2 flex-shrink-0">
                           <Button
                             size="sm"
                             variant="outline"
@@ -256,25 +260,27 @@ const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
                   </div>
                   
                   <div className="p-6">
-                    <div className="grid grid-cols-12 gap-4">
-                      {moisNames.map((mois, index) => {
-                        const moisKey = mois.toLowerCase().replace('é', 'e').replace('û', 'u');
-                        const montant = cotisation.mois[moisKey] || 0;
-                        return (
-                          <div key={mois} className="text-center">
-                            <div className="text-xs font-medium text-gray-500 mb-1">
-                              {mois.substring(0, 3)}
+                    <div className="overflow-x-auto">
+                      <div className="grid grid-cols-12 gap-4 min-w-[800px]">
+                        {moisNames.map((mois, index) => {
+                          const moisKey = mois.toLowerCase().replace('é', 'e').replace('û', 'u');
+                          const montant = cotisation.mois[moisKey] || 0;
+                          return (
+                            <div key={mois} className="text-center">
+                              <div className="text-xs font-medium text-gray-500 mb-1">
+                                {mois.substring(0, 3)}
+                              </div>
+                              <div className={`px-2 py-1 rounded text-sm font-medium ${
+                                montant > 0 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                {montant}€
+                              </div>
                             </div>
-                            <div className={`px-2 py-1 rounded text-sm font-medium ${
-                              montant > 0 
-                                ? 'bg-green-100 text-green-800' 
-                                : 'bg-red-100 text-red-800'
-                            }`}>
-                              {montant}€
-                            </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </div>

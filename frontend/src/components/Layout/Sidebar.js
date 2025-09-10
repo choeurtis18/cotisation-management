@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
-const Sidebar = () => {
+const Sidebar = ({ onClose }) => {
   const location = useLocation();
 
   const menuItems = [
@@ -46,6 +46,7 @@ const Sidebar = () => {
             <li key={item.path}>
               <Link
                 to={item.path}
+                onClick={onClose}
                 className={`flex items-center space-x-3 p-3 rounded-lg transition-colors duration-200 ${
                   location.pathname === item.path
                     ? 'bg-blue-600 text-white'

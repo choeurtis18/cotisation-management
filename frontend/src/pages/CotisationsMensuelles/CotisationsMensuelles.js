@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
 import Header from '../../components/Layout/Header';
 import Table from '../../components/Common/Table';
 import Button from '../../components/Common/Button';
@@ -6,6 +7,7 @@ import Modal from '../../components/Common/Modal';
 import { cotisationsMensuellesService, adherentsService, cotisationsService } from '../../services/api';
 
 const CotisationsMensuelles = () => {
+  const API_URL = process.env.REACT_APP_API_URL;
   const [cotisationsMensuelles, setCotisationsMensuelles] = useState([]);
   const [adherents, setAdherents] = useState([]);
   const [cotisations, setCotisations] = useState([]);
@@ -25,7 +27,7 @@ const CotisationsMensuelles = () => {
   });
 
   const currentYear = new Date().getFullYear();
-const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
+  const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
   const moisOptions = [
     { value: 1, label: 'Janvier' },
     { value: 2, label: 'Février' },
@@ -46,15 +48,7 @@ const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
     'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre'
   ];
 
-  useEffect(() => {
-    loadData();
-  }, [selectedMonth, selectedYear]);
-
-  useEffect(() => {
-    loadAdherentsAndCotisations();
-  }, []);
-
-  const loadAdherentsAndCotisations = async () => {
+  const loadAdherentsAndCotisations = useCallback(async () => {
     try {
       const [adherentsResponse, cotisationsResponse] = await Promise.all([
         adherentsService.getAll(),
@@ -65,20 +59,18 @@ const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
     } catch (err) {
       console.error('Erreur chargement données de base:', err);
     }
-  };
+  }, []);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await cotisationsMensuellesService.getAll({
-        annee: selectedYear
+      const response = await axios.get(`${API_URL}/cotisations-mensuelles`, {
+        params: {
+          annee: selectedYear
+        }
       });
       
-      // Filtrer les cotisations qui ont un montant > 0 pour le mois sélectionné
-      const moisKey = moisKeys[selectedMonth - 1];
-      const filteredData = response.data.filter(cotisation => 
-        cotisation.mois[moisKey] > 0
-      );
+      const filteredData = response.data; // pas de filtre sur le montant
       
       setCotisationsMensuelles(filteredData);
       setError(null);
@@ -88,7 +80,15 @@ const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedMonth, selectedYear, API_URL]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    loadAdherentsAndCotisations();
+  }, [loadAdherentsAndCotisations]);
 
   const handleEditMontant = (cotisation) => {
     const moisKey = moisKeys[selectedMonth - 1];
@@ -217,13 +217,13 @@ const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
     <div className="flex-1 flex flex-col">
       <Header title="Cotisations Mensuelles" />
       
-      <div className="flex-1 p-6">
-        <div className="mb-6 flex justify-between items-center">
+      <div className="flex-1 p-4 sm:p-6">
+        <div className="mb-6 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <h2 className="text-lg font-medium text-gray-900">
             Cotisations pour {getCurrentMonthName()} {selectedYear}
           </h2>
           
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:space-x-4">
             <Button
               onClick={() => setShowAddModal(true)}
               className="bg-blue-600 hover:bg-blue-700"
