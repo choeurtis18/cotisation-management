@@ -88,7 +88,7 @@ const CotisationsMensuelles = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedMonth, selectedYear, API_URL]);
+  }, [selectedYear, API_URL]);
 
   useEffect(() => {
     loadData();
