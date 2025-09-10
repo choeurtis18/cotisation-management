@@ -1,10 +1,13 @@
 const express = require('express');
+
 const dotenv = require('dotenv');
+require('dotenv').config();
+
 const cors = require('cors');
-const fileManager = require('./utils/fileManager');
+
+const { testConnection } = require('./utils/database');
 
 const app = express();
-require('dotenv').config();
 const PORT = process.env.PORT;
 
 // Middleware
@@ -18,32 +21,6 @@ const cotisationsRoutes = require('./routes/cotisations');
 const cotisationsMensuellesRoutes = require('./routes/cotisations-mensuelles');
 const exportRoutes = require('./routes/export');
 
-// Initialize data files
-const initializeDataFiles = () => {
-  console.log('Initialisation des fichiers de données...');
-  
-  // Vérifier et créer les fichiers JSON s'ils n'existent pas
-  const adherentsData = fileManager.readJSON('adherents.json');
-  const cotisationsData = fileManager.readJSON('cotisations.json');
-  const cotisationsMensuellesData = fileManager.readJSON('cotisations-mensuelles.json');
-
-  if (!adherentsData) {
-    console.log('Création du fichier adherents.json');
-    fileManager.initializeFile('adherents.json', { adherents: [] });
-  }
-
-  if (!cotisationsData) {
-    console.log('Création du fichier cotisations.json');
-    fileManager.initializeFile('cotisations.json', { cotisations: [] });
-  }
-
-  if (!cotisationsMensuellesData) {
-    console.log('Création du fichier cotisations-mensuelles.json');
-    fileManager.initializeFile('cotisations-mensuelles.json', { cotisationsMensuelles: [] });
-  }
-
-  console.log('Fichiers de données initialisés avec succès');
-};
 
 // Routes
 app.use('/api/adherents', adherentsRoutes);
@@ -90,21 +67,30 @@ app.use((error, req, res, next) => {
   res.status(500).json({ error: 'Erreur interne du serveur' });
 });
 
-// Démarrage du serveur
-const startServer = () => {
+
+const initializeDatabase = async () => {
   try {
-    initializeDataFiles();
-    
-    app.listen(PORT, () => {
-      console.log(`🚀 Serveur démarré sur le port ${PORT}`);
-      console.log(`📊 API disponible sur http://localhost:${PORT}`);
-      console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
-      console.log(`👥 Adhérents: http://localhost:${PORT}/api/adherents`);
-    });
+    console.log('Test de connexion PostgreSQL...');
+    const connected = await testConnection();
+    if (!connected) {
+      console.log('⚠️  PostgreSQL non disponible, utilisation des fichiers JSON');
+    }
   } catch (error) {
-    console.error('Erreur démarrage serveur:', error);
-    process.exit(1);
+    console.error('Erreur lors du test de connexion PostgreSQL:', error);
+    console.log('⚠️  Fallback vers fichiers JSON');
   }
+};
+
+// Démarrage du serveur
+const startServer = async () => {
+  await initializeDatabase();
+  
+  app.listen(PORT, () => {
+    console.log(`🚀 Serveur démarré sur le port ${PORT}`);
+    console.log(`📊 API disponible sur http://localhost:${PORT}`);
+    console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
+    console.log(`👥 Adhérents: http://localhost:${PORT}/api/adherents`);
+  });
 };
 
 startServer();

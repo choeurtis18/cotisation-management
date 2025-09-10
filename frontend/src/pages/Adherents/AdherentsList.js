@@ -90,8 +90,8 @@ const AdherentsList = () => {
     },
     {
       header: 'Date de création',
-      accessor: 'dateCreation',
-      render: (row) => new Date(row.dateCreation).toLocaleDateString('fr-FR')
+      accessor: 'date_creation',
+      render: (row) => new Date(row.date_creation).toLocaleDateString('fr-FR')
     },
     {
       header: 'Statut',

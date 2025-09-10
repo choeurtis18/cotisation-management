@@ -70,9 +70,17 @@ const CotisationsMensuelles = () => {
         }
       });
       
-      const filteredData = response.data; // pas de filtre sur le montant
+      // Calculer le total versé pour chaque cotisation mensuelle
+      const cotisationsAvecCalculs = response.data.map(cotisation => {
+        const totalVersee = Object.values(cotisation.mois || {}).reduce((sum, montant) => sum + (parseFloat(montant) || 0), 0);
+        
+        return {
+          ...cotisation,
+          totalVersee
+        };
+      });
       
-      setCotisationsMensuelles(filteredData);
+      setCotisationsMensuelles(cotisationsAvecCalculs);
       setError(null);
     } catch (err) {
       setError('Erreur lors du chargement des cotisations mensuelles');
@@ -152,13 +160,29 @@ const CotisationsMensuelles = () => {
     }
   };
 
-  const getAdherentName = (adherentId) => {
-    const adherent = adherents.find(a => a.id === adherentId);
+  const getAdherentName = (row) => {
+    // Vérifier que row existe
+    if (!row) return 'Adhérent inconnu';
+    
+    // Utiliser directement les propriétés de l'API si disponibles
+    if (row.adherent_nom && row.adherent_prenom) {
+      return `${row.adherent_prenom} ${row.adherent_nom}`;
+    }
+    // Fallback vers la recherche dans la liste des adhérents
+    const adherent = adherents.find(a => a.id === row.adherent_id);
     return adherent ? `${adherent.prenom} ${adherent.nom}` : 'Adhérent inconnu';
   };
 
-  const getCotisationName = (cotisationId) => {
-    const cotisation = cotisations.find(c => c.id === cotisationId);
+  const getCotisationName = (row) => {
+    // Vérifier que row existe
+    if (!row) return 'Cotisation inconnue';
+    
+    // Utiliser directement les propriétés de l'API si disponibles
+    if (row.cotisation_nom) {
+      return row.cotisation_nom;
+    }
+    // Fallback vers la recherche dans la liste des cotisations
+    const cotisation = cotisations.find(c => c.id === row.cotisation_id);
     return cotisation ? cotisation.nom : 'Cotisation inconnue';
   };
 
@@ -169,22 +193,22 @@ const CotisationsMensuelles = () => {
   const columns = [
     {
       header: 'Adhérent',
-      render: (row) => getAdherentName(row.adherentId)
+      render: (row) => getAdherentName(row)
     },
     {
       header: 'Cotisation',
-      render: (row) => getCotisationName(row.cotisationId)
+      render: (row) => getCotisationName(row)
     },
     {
       header: 'Moyenne mensuelle',
-      accessor: 'moyenneCotisation',
-      render: (row) => `${row.moyenneCotisation}€`
+      accessor: 'moyenne_cotisation',
+      render: (row) => `${row?.moyenne_cotisation || 0}€`
     },
     {
       header: `Montant ${getCurrentMonthName()}`,
       render: (row) => {
         const moisKey = moisKeys[selectedMonth - 1];
-        const montant = row.mois[moisKey];
+        const montant = row?.mois?.[moisKey] || 0;
         return (
           <span className={`font-medium ${
             montant > 0 ? 'text-green-600' : 'text-red-600'
@@ -197,7 +221,7 @@ const CotisationsMensuelles = () => {
     {
       header: 'Total versé pour l\'année',
       accessor: 'totalVersee',
-      render: (row) => `${row.totalVersee}€`
+      render: (row) => `${row?.totalVersee || 0}€`
     },
     {
       header: 'Actions',

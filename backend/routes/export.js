@@ -1,26 +1,29 @@
 const express = require('express');
 const router = express.Router();
-const fileManager = require('../utils/fileManager');
 
 // Export CSV pour un adhérent
 router.get('/adherent/:id/:annee', async (req, res) => {
   try {
     const { id, annee } = req.params;
+    const { query } = require('../utils/database');
     
-    // Charger les données
-    const adherentsData = fileManager.readData('adherents');
-    const cotisationsData = fileManager.readData('cotisations');
-    const cotisationsMensuellesData = fileManager.readData('cotisations-mensuelles');
-    
-    const adherent = adherentsData.adherents.find(a => a.id === id);
-    if (!adherent) {
+    // Récupérer l'adhérent
+    const adherentResult = await query('SELECT * FROM adherents WHERE id = $1', [id]);
+    if (adherentResult.rows.length === 0) {
       return res.status(404).json({ error: 'Adhérent non trouvé' });
     }
+    const adherent = adherentResult.rows[0];
     
-    // Filtrer les cotisations de l'adhérent pour l'année
-    const cotisationsAdherent = cotisationsMensuellesData.cotisationsMensuelles.filter(
-      cm => cm.adherentId === id && cm.annee === parseInt(annee)
-    );
+    // Récupérer les cotisations mensuelles de l'adhérent avec les noms des cotisations
+    const cotisationsAdherentResult = await query(`
+      SELECT cm.*, c.nom as cotisation_nom
+      FROM cotisations_mensuelles cm
+      JOIN cotisations c ON cm.cotisation_id = c.id
+      WHERE cm.adherent_id = $1 AND cm.annee = $2
+      ORDER BY c.nom
+    `, [id, parseInt(annee)]);
+    
+    const cotisationsAdherent = cotisationsAdherentResult.rows;
     
     // Headers pour le téléchargement CSV
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -38,10 +41,14 @@ router.get('/adherent/:id/:annee', async (req, res) => {
       
       // Données principales
       cotisationsAdherent.forEach((cotisation) => {
-        const cotisationInfo = cotisationsData.cotisations.find(c => c.id === cotisation.cotisationId);
-        const cotisationNom = cotisationInfo ? cotisationInfo.nom : 'Cotisation inconnue';
+        const moyenneCotisation = parseFloat(cotisation.moyenne_cotisation) || 0;
+        const totalAttendu = moyenneCotisation * 12;
+        const totalVersee = Object.values(cotisation.mois || {}).reduce((sum, montant) => sum + (parseFloat(montant) || 0), 0);
+        const difference = totalVersee - totalAttendu;
+        const retard = difference < 0 ? Math.abs(difference) : 0;
+        const avance = difference > 0 ? difference : 0;
         
-        csvContent += `"${cotisationNom}",${cotisation.moyenneCotisation},${cotisation.totalAttendu},${cotisation.totalVersee},${cotisation.retard},${cotisation.avance}\n`;
+        csvContent += `"${cotisation.cotisation_nom}",${moyenneCotisation},${totalAttendu},${totalVersee},${retard},${avance}\n`;
       });
       
       // Détail mensuel
@@ -49,17 +56,26 @@ router.get('/adherent/:id/:annee', async (req, res) => {
       csvContent += 'Cotisation,Janvier,Février,Mars,Avril,Mai,Juin,Juillet,Août,Septembre,Octobre,Novembre,Décembre\n';
       
       cotisationsAdherent.forEach((cotisation) => {
-        const cotisationInfo = cotisationsData.cotisations.find(c => c.id === cotisation.cotisationId);
-        const cotisationNom = cotisationInfo ? cotisationInfo.nom : 'Cotisation inconnue';
-        
-        csvContent += `"${cotisationNom}",${cotisation.mois.janvier},${cotisation.mois.fevrier},${cotisation.mois.mars},${cotisation.mois.avril},${cotisation.mois.mai},${cotisation.mois.juin},${cotisation.mois.juillet},${cotisation.mois.aout},${cotisation.mois.septembre},${cotisation.mois.octobre},${cotisation.mois.novembre},${cotisation.mois.decembre}\n`;
+        csvContent += `"${cotisation.cotisation_nom}",${cotisation.mois.janvier || 0},${cotisation.mois.fevrier || 0},${cotisation.mois.mars || 0},${cotisation.mois.avril || 0},${cotisation.mois.mai || 0},${cotisation.mois.juin || 0},${cotisation.mois.juillet || 0},${cotisation.mois.aout || 0},${cotisation.mois.septembre || 0},${cotisation.mois.octobre || 0},${cotisation.mois.novembre || 0},${cotisation.mois.decembre || 0}\n`;
       });
       
       // Récapitulatif total
-      const totalAttendu = cotisationsAdherent.reduce((sum, c) => sum + c.totalAttendu, 0);
-      const totalVerse = cotisationsAdherent.reduce((sum, c) => sum + c.totalVersee, 0);
-      const totalRetard = cotisationsAdherent.reduce((sum, c) => sum + c.retard, 0);
-      const totalAvance = cotisationsAdherent.reduce((sum, c) => sum + c.avance, 0);
+      let totalAttendu = 0;
+      let totalVerse = 0;
+      let totalRetard = 0;
+      let totalAvance = 0;
+      
+      cotisationsAdherent.forEach((cotisation) => {
+        const moyenneCotisation = parseFloat(cotisation.moyenne_cotisation) || 0;
+        const attendu = moyenneCotisation * 12;
+        const verse = Object.values(cotisation.mois || {}).reduce((sum, montant) => sum + (parseFloat(montant) || 0), 0);
+        const difference = verse - attendu;
+        
+        totalAttendu += attendu;
+        totalVerse += verse;
+        totalRetard += difference < 0 ? Math.abs(difference) : 0;
+        totalAvance += difference > 0 ? difference : 0;
+      });
       
       csvContent += '\n\nRécapitulatif Total\n';
       csvContent += 'Indicateur,Montant\n';
@@ -81,21 +97,25 @@ router.get('/adherent/:id/:annee', async (req, res) => {
 router.get('/cotisation/:id/:annee', async (req, res) => {
   try {
     const { id, annee } = req.params;
+    const { query } = require('../utils/database');
     
-    // Charger les données
-    const adherentsData = fileManager.readData('adherents');
-    const cotisationsData = fileManager.readData('cotisations');
-    const cotisationsMensuellesData = fileManager.readData('cotisations-mensuelles');
-    
-    const cotisation = cotisationsData.cotisations.find(c => c.id === id);
-    if (!cotisation) {
+    // Récupérer la cotisation
+    const cotisationResult = await query('SELECT * FROM cotisations WHERE id = $1', [id]);
+    if (cotisationResult.rows.length === 0) {
       return res.status(404).json({ error: 'Cotisation non trouvée' });
     }
+    const cotisation = cotisationResult.rows[0];
     
-    // Filtrer les adhérents de cette cotisation pour l'année
-    const adherentsCotisation = cotisationsMensuellesData.cotisationsMensuelles.filter(
-      cm => cm.cotisationId === id && cm.annee === parseInt(annee)
-    );
+    // Récupérer les cotisations mensuelles avec les noms des adhérents
+    const cotisationsMensuellesResult = await query(`
+      SELECT cm.*, a.nom as adherent_nom, a.prenom as adherent_prenom
+      FROM cotisations_mensuelles cm
+      JOIN adherents a ON cm.adherent_id = a.id
+      WHERE cm.cotisation_id = $1 AND cm.annee = $2
+      ORDER BY a.nom, a.prenom
+    `, [id, parseInt(annee)]);
+    
+    const adherentsCotisation = cotisationsMensuellesResult.rows;
     
     // Headers pour le téléchargement CSV
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -109,14 +129,21 @@ router.get('/cotisation/:id/:annee', async (req, res) => {
       csvContent += 'Aucun adhérent trouvé pour cette cotisation cette année.\n';
     } else {
       // En-têtes du tableau avec toutes les colonnes mensuelles
-      csvContent += 'Adhérent,Moyenne de cotisation,Total attendu,Total versée,Retard,Avance,Janvier,Février,Mars,Avril,Mai,Juin,Juillet,Août,Septembre,Octobre,Novembre,Décembre\n';
+      csvContent += 'Adhérent,Moyenne de cotisation,Total attendu,Total versé,Retard,Avance,Janvier,Février,Mars,Avril,Mai,Juin,Juillet,Août,Septembre,Octobre,Novembre,Décembre\n';
       
       // Données des adhérents avec toutes les colonnes
       adherentsCotisation.forEach((cotisationMensuelle) => {
-        const adherentInfo = adherentsData.adherents.find(a => a.id === cotisationMensuelle.adherentId);
-        const adherentNom = adherentInfo ? `${adherentInfo.prenom} ${adherentInfo.nom}` : 'Adhérent inconnu';
+        const adherentNom = `${cotisationMensuelle.adherent_prenom} ${cotisationMensuelle.adherent_nom}`;
         
-        csvContent += `"${adherentNom}",${cotisationMensuelle.moyenneCotisation},${cotisationMensuelle.totalAttendu},${cotisationMensuelle.totalVersee},${cotisationMensuelle.retard},${cotisationMensuelle.avance},${cotisationMensuelle.mois.janvier},${cotisationMensuelle.mois.fevrier},${cotisationMensuelle.mois.mars},${cotisationMensuelle.mois.avril},${cotisationMensuelle.mois.mai},${cotisationMensuelle.mois.juin},${cotisationMensuelle.mois.juillet},${cotisationMensuelle.mois.aout},${cotisationMensuelle.mois.septembre},${cotisationMensuelle.mois.octobre},${cotisationMensuelle.mois.novembre},${cotisationMensuelle.mois.decembre}\n`;
+        // Calculer les totaux
+        const moyenneCotisation = parseFloat(cotisationMensuelle.moyenne_cotisation) || 0;
+        const totalAttendu = moyenneCotisation * 12;
+        const totalVersee = Object.values(cotisationMensuelle.mois || {}).reduce((sum, montant) => sum + (parseFloat(montant) || 0), 0);
+        const difference = totalVersee - totalAttendu;
+        const retard = difference < 0 ? Math.abs(difference) : 0;
+        const avance = difference > 0 ? difference : 0;
+        
+        csvContent += `"${adherentNom}",${moyenneCotisation},${totalAttendu},${totalVersee},${retard},${avance},${cotisationMensuelle.mois.janvier || 0},${cotisationMensuelle.mois.fevrier || 0},${cotisationMensuelle.mois.mars || 0},${cotisationMensuelle.mois.avril || 0},${cotisationMensuelle.mois.mai || 0},${cotisationMensuelle.mois.juin || 0},${cotisationMensuelle.mois.juillet || 0},${cotisationMensuelle.mois.aout || 0},${cotisationMensuelle.mois.septembre || 0},${cotisationMensuelle.mois.octobre || 0},${cotisationMensuelle.mois.novembre || 0},${cotisationMensuelle.mois.decembre || 0}\n`;
       });
     }
     

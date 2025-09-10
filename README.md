@@ -56,10 +56,7 @@ L'export PDF a été remplacé par un export CSV universel plus adapté.
 
 ## Données
 
-Les données sont stockées dans des fichiers JSON locaux dans `backend/data/`:
-- `adherents.json` - Liste des adhérents
-- `cotisations.json` - Liste des cotisations
-- `cotisations-mensuelles.json` - Données mensuelles des cotisations
+Les données sont stockées dans NeonDB
 
 ## Développement
 

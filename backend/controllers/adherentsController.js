@@ -1,17 +1,19 @@
-const fileManager = require('../utils/fileManager');
-const { v4: uuidv4 } = require('uuid');
+const { query } = require('../utils/database');
 
 class AdherentsController {
   
   // GET /api/adherents
   async getAllAdherents(req, res) {
     try {
-      const data = fileManager.readJSON('adherents.json');
-      if (!data) {
-        return res.status(500).json({ error: 'Erreur lecture des adhérents' });
-      }
-      res.json(data.adherents);
+      const result = await query('SELECT * FROM adherents ORDER BY nom, prenom');
+      // Correction du format de date pour le frontend
+      const adherents = result.rows.map(a => ({
+        ...a,
+        date_creation: a.date_creation ? new Date(a.date_creation).toISOString() : null,
+      }));
+      res.json(adherents);
     } catch (error) {
+      console.error('Erreur getAllAdherents:', error);
       res.status(500).json({ error: 'Erreur serveur' });
     }
   }
@@ -20,19 +22,20 @@ class AdherentsController {
   async getAdherentById(req, res) {
     try {
       const { id } = req.params;
-      const data = fileManager.readJSON('adherents.json');
+      const result = await query('SELECT * FROM adherents WHERE id = $1', [id]);
       
-      if (!data) {
-        return res.status(500).json({ error: 'Erreur lecture des adhérents' });
-      }
-
-      const adherent = data.adherents.find(a => a.id === id);
-      if (!adherent) {
+      if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Adhérent non trouvé' });
       }
 
+      const adherent = {
+        ...result.rows[0],
+        date_creation: result.rows[0].date_creation ? new Date(result.rows[0].date_creation).toISOString() : null,
+      };
+
       res.json(adherent);
     } catch (error) {
+      console.error('Erreur getAdherentById:', error);
       res.status(500).json({ error: 'Erreur serveur' });
     }
   }
@@ -46,24 +49,19 @@ class AdherentsController {
         return res.status(400).json({ error: 'Nom et prénom requis' });
       }
 
-      const data = fileManager.readJSON('adherents.json') || { adherents: [] };
-      
-      const newAdherent = {
-        id: uuidv4(),
-        nom: nom.trim(),
-        prenom: prenom.trim(),
-        dateCreation: new Date().toISOString(),
-        actif: true
+      const result = await query(
+        'INSERT INTO adherents (nom, prenom, date_creation) VALUES ($1, $2, CURRENT_TIMESTAMP) RETURNING *',
+        [nom.trim(), prenom.trim()]
+      );
+
+      const adherent = {
+        ...result.rows[0],
+        date_creation: result.rows[0].date_creation ? new Date(result.rows[0].date_creation).toISOString() : null,
       };
 
-      data.adherents.push(newAdherent);
-      
-      if (!fileManager.writeJSON('adherents.json', data)) {
-        return res.status(500).json({ error: 'Erreur sauvegarde' });
-      }
-
-      res.status(201).json(newAdherent);
+      res.status(201).json(adherent);
     } catch (error) {
+      console.error('Erreur createAdherent:', error);
       res.status(500).json({ error: 'Erreur serveur' });
     }
   }
@@ -72,29 +70,45 @@ class AdherentsController {
   async updateAdherent(req, res) {
     try {
       const { id } = req.params;
-      const { nom, prenom, actif } = req.body;
+      const { nom, prenom } = req.body;
 
-      const data = fileManager.readJSON('adherents.json');
-      if (!data) {
-        return res.status(500).json({ error: 'Erreur lecture des adhérents' });
+      // Construire la requête de mise à jour dynamiquement
+      const updates = [];
+      const values = [];
+      let paramIndex = 1;
+
+      if (nom !== undefined) {
+        updates.push(`nom = $${paramIndex}`);
+        values.push(nom.trim());
+        paramIndex++;
+      }
+      if (prenom !== undefined) {
+        updates.push(`prenom = $${paramIndex}`);
+        values.push(prenom.trim());
+        paramIndex++;
       }
 
-      const adherentIndex = data.adherents.findIndex(a => a.id === id);
-      if (adherentIndex === -1) {
+      if (updates.length === 0) {
+        return res.status(400).json({ error: 'Aucune donnée à mettre à jour' });
+      }
+
+      values.push(id);
+      const updateQuery = `UPDATE adherents SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${paramIndex} RETURNING *`;
+      
+      const result = await query(updateQuery, values);
+      
+      if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Adhérent non trouvé' });
       }
 
-      // Mise à jour des champs fournis
-      if (nom !== undefined) data.adherents[adherentIndex].nom = nom.trim();
-      if (prenom !== undefined) data.adherents[adherentIndex].prenom = prenom.trim();
-      if (actif !== undefined) data.adherents[adherentIndex].actif = actif;
+      const adherent = {
+        ...result.rows[0],
+        date_creation: result.rows[0].date_creation ? new Date(result.rows[0].date_creation).toISOString() : null,
+      };
 
-      if (!fileManager.writeJSON('adherents.json', data)) {
-        return res.status(500).json({ error: 'Erreur sauvegarde' });
-      }
-
-      res.json(data.adherents[adherentIndex]);
+      res.json(adherent);
     } catch (error) {
+      console.error('Erreur updateAdherent:', error);
       res.status(500).json({ error: 'Erreur serveur' });
     }
   }
@@ -104,25 +118,15 @@ class AdherentsController {
     try {
       const { id } = req.params;
 
-      const data = fileManager.readJSON('adherents.json');
-      if (!data) {
-        return res.status(500).json({ error: 'Erreur lecture des adhérents' });
-      }
-
-      const adherentIndex = data.adherents.findIndex(a => a.id === id);
-      if (adherentIndex === -1) {
+      const result = await query('DELETE FROM adherents WHERE id = $1 RETURNING id', [id]);
+      
+      if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Adhérent non trouvé' });
-      }
-
-      // Supprimer l'adhérent
-      data.adherents.splice(adherentIndex, 1);
-
-      if (!fileManager.writeJSON('adherents.json', data)) {
-        return res.status(500).json({ error: 'Erreur sauvegarde' });
       }
 
       res.json({ message: 'Adhérent supprimé avec succès' });
     } catch (error) {
+      console.error('Erreur deleteAdherent:', error);
       res.status(500).json({ error: 'Erreur serveur' });
     }
   }

@@ -95,8 +95,8 @@ const CotisationsList = () => {
     },
     {
       header: 'Date de création',
-      accessor: 'dateCreation',
-      render: (row) => new Date(row.dateCreation).toLocaleDateString('fr-FR')
+      accessor: 'created_at',
+      render: (row) => new Date(row.created_at).toLocaleDateString('fr-FR')
     },
     {
       header: 'Statut',

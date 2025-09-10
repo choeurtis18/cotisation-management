@@ -72,7 +72,30 @@ const CotisationDetail = () => {
         cotisationId: id,
         annee: selectedYear
       });
-      setCotisationsMensuelles(response.data);
+      
+      // Calculer les totaux et retards/avances pour chaque cotisation mensuelle
+      const cotisationsAvecCalculs = response.data.map(cotisation => {
+        const moyenneCotisation = parseFloat(cotisation.moyenne_cotisation) || 0;
+        const totalAttendu = moyenneCotisation * 12;
+        
+        // Calculer le total versé en sommant tous les mois
+        const totalVersee = Object.values(cotisation.mois || {}).reduce((sum, montant) => sum + (parseFloat(montant) || 0), 0);
+        
+        // Calculer retard et avance (mutuellement exclusifs)
+        const difference = totalVersee - totalAttendu;
+        const retard = difference < 0 ? Math.abs(difference) : 0;
+        const avance = difference > 0 ? difference : 0;
+        
+        return {
+          ...cotisation,
+          totalAttendu,
+          totalVersee,
+          retard,
+          avance
+        };
+      });
+      
+      setCotisationsMensuelles(cotisationsAvecCalculs);
       setError(null);
     } catch (err) {
       setError('Erreur lors du chargement des cotisations mensuelles');
@@ -128,10 +151,12 @@ const CotisationDetail = () => {
   };
 
   const handleEdit = (cotisationMensuelle) => {
+    if (!cotisationMensuelle) return;
+    
     setEditingCotisation(cotisationMensuelle);
     setEditFormData({
-      moyenneCotisation: cotisationMensuelle.moyenneCotisation,
-      mois: { ...cotisationMensuelle.mois }
+      moyenneCotisation: cotisationMensuelle.moyenne_cotisation || 0,
+      mois: { ...cotisationMensuelle.mois } || {}
     });
     setShowEditModal(true);
   };
@@ -144,7 +169,10 @@ const CotisationDetail = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(editFormData),
+        body: JSON.stringify({
+          moyenneCotisation: editFormData.moyenneCotisation,
+          mois: editFormData.mois
+        }),
       });
 
       if (response.ok) {
@@ -167,8 +195,11 @@ const CotisationDetail = () => {
   };
 
   const handleDeleteCotisationMensuelle = async (cotisationMensuelle) => {
-    const adherent = adherents.find(a => a.id === cotisationMensuelle.adherentId);
-    const adherentName = adherent ? `${adherent.prenom} ${adherent.nom}` : 'Adhérent inconnu';
+    if (!cotisationMensuelle) return;
+    
+    const adherentName = cotisationMensuelle.adherent_nom && cotisationMensuelle.adherent_prenom 
+      ? `${cotisationMensuelle.adherent_prenom} ${cotisationMensuelle.adherent_nom}`
+      : 'Adhérent inconnu';
     
     if (window.confirm(`Supprimer la cotisation mensuelle de ${adherentName} pour ${selectedYear} ?`)) {
       try {
@@ -204,42 +235,50 @@ const CotisationDetail = () => {
     }
   };
 
-  const getAdherentName = (adherentId) => {
-    const adherent = adherents.find(a => a.id === adherentId);
+  const getAdherentName = (row) => {
+    // Vérifier que row existe
+    if (!row) return 'Adhérent inconnu';
+    
+    // Utiliser directement les propriétés de l'API si disponibles
+    if (row.adherent_nom && row.adherent_prenom) {
+      return `${row.adherent_prenom} ${row.adherent_nom}`;
+    }
+    // Fallback vers la recherche dans la liste des adhérents
+    const adherent = adherents.find(a => a.id === row.adherent_id);
     return adherent ? `${adherent.prenom} ${adherent.nom}` : 'Adhérent inconnu';
   };
 
   const columns = [
     {
       header: 'Adhérent',
-      render: (row) => getAdherentName(row.adherentId)
+      render: (row) => getAdherentName(row)
     },
     {
       header: 'Moyenne',
-      accessor: 'moyenneCotisation',
-      render: (row) => `${row.moyenneCotisation}€`
+      accessor: 'moyenne_cotisation',
+      render: (row) => `${row?.moyenne_cotisation || 0}€`
     },
     {
       header: 'Total attendu',
       accessor: 'totalAttendu',
-      render: (row) => `${row.totalAttendu}€`
+      render: (row) => `${row?.totalAttendu || 0}€`
     },
     {
       header: 'Total versé',
       accessor: 'totalVersee',
-      render: (row) => `${row.totalVersee}€`
+      render: (row) => `${row?.totalVersee || 0}€`
     },
     {
       header: 'Retard',
       accessor: 'retard',
-      render: (row) => row.retard > 0 ? (
+      render: (row) => (row?.retard || 0) > 0 ? (
         <span className="text-red-600 font-medium">{row.retard}€</span>
       ) : '-'
     },
     {
       header: 'Avance',
       accessor: 'avance',
-      render: (row) => row.avance > 0 ? (
+      render: (row) => (row?.avance || 0) > 0 ? (
         <span className="text-green-600 font-medium">{row.avance}€</span>
       ) : '-'
     },
@@ -252,7 +291,7 @@ const CotisationDetail = () => {
             variant="primary"
             onClick={(e) => {
               e.stopPropagation();
-              handleEdit(row);
+              if (row) handleEdit(row);
             }}
           >
             Modifier
@@ -262,7 +301,7 @@ const CotisationDetail = () => {
             variant="danger"
             onClick={(e) => {
               e.stopPropagation();
-              handleDeleteCotisationMensuelle(row);
+              if (row) handleDeleteCotisationMensuelle(row);
             }}
           >
             Supprimer

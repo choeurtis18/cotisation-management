@@ -1,17 +1,14 @@
-const fileManager = require('../utils/fileManager');
-const { v4: uuidv4 } = require('uuid');
+const { query } = require('../utils/database');
 
 class CotisationsController {
   
   // GET /api/cotisations
   async getAllCotisations(req, res) {
     try {
-      const data = fileManager.readJSON('cotisations.json');
-      if (!data) {
-        return res.status(500).json({ error: 'Erreur lecture des cotisations' });
-      }
-      res.json(data.cotisations);
+      const result = await query('SELECT * FROM cotisations ORDER BY nom');
+      res.json(result.rows);
     } catch (error) {
+      console.error('Erreur getAllCotisations:', error);
       res.status(500).json({ error: 'Erreur serveur' });
     }
   }
@@ -20,19 +17,15 @@ class CotisationsController {
   async getCotisationById(req, res) {
     try {
       const { id } = req.params;
-      const data = fileManager.readJSON('cotisations.json');
+      const result = await query('SELECT * FROM cotisations WHERE id = $1', [id]);
       
-      if (!data) {
-        return res.status(500).json({ error: 'Erreur lecture des cotisations' });
-      }
-
-      const cotisation = data.cotisations.find(c => c.id === id);
-      if (!cotisation) {
+      if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Cotisation non trouvée' });
       }
 
-      res.json(cotisation);
+      res.json(result.rows[0]);
     } catch (error) {
+      console.error('Erreur getCotisationById:', error);
       res.status(500).json({ error: 'Erreur serveur' });
     }
   }
@@ -46,24 +39,17 @@ class CotisationsController {
         return res.status(400).json({ error: 'Nom requis' });
       }
 
-      const data = fileManager.readJSON('cotisations.json') || { cotisations: [] };
-      
-      const newCotisation = {
-        id: uuidv4(),
-        nom: nom.trim(),
-        description: description ? description.trim() : '',
-        dateCreation: new Date().toISOString(),
-        actif: true
-      };
+      const result = await query(
+        'INSERT INTO cotisations (nom, description) VALUES ($1, $2) RETURNING *',
+        [nom.trim(), description ? description.trim() : '']
+      );
 
-      data.cotisations.push(newCotisation);
-      
-      if (!fileManager.writeJSON('cotisations.json', data)) {
-        return res.status(500).json({ error: 'Erreur sauvegarde' });
-      }
-
-      res.status(201).json(newCotisation);
+      res.status(201).json(result.rows[0]);
     } catch (error) {
+      console.error('Erreur createCotisation:', error);
+      if (error.code === '23505') { // Violation de contrainte unique
+        return res.status(400).json({ error: 'Une cotisation avec ce nom existe déjà' });
+      }
       res.status(500).json({ error: 'Erreur serveur' });
     }
   }
@@ -72,29 +58,43 @@ class CotisationsController {
   async updateCotisation(req, res) {
     try {
       const { id } = req.params;
-      const { nom, description, actif } = req.body;
+      const { nom, description } = req.body;
 
-      const data = fileManager.readJSON('cotisations.json');
-      if (!data) {
-        return res.status(500).json({ error: 'Erreur lecture des cotisations' });
+      // Construire la requête de mise à jour dynamiquement
+      const updates = [];
+      const values = [];
+      let paramIndex = 1;
+
+      if (nom !== undefined) {
+        updates.push(`nom = $${paramIndex}`);
+        values.push(nom.trim());
+        paramIndex++;
+      }
+      if (description !== undefined) {
+        updates.push(`description = $${paramIndex}`);
+        values.push(description.trim());
+        paramIndex++;
       }
 
-      const cotisationIndex = data.cotisations.findIndex(c => c.id === id);
-      if (cotisationIndex === -1) {
+      if (updates.length === 0) {
+        return res.status(400).json({ error: 'Aucune donnée à mettre à jour' });
+      }
+
+      values.push(id);
+      const updateQuery = `UPDATE cotisations SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${paramIndex} RETURNING *`;
+      
+      const result = await query(updateQuery, values);
+      
+      if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Cotisation non trouvée' });
       }
 
-      // Mise à jour des champs fournis
-      if (nom !== undefined) data.cotisations[cotisationIndex].nom = nom.trim();
-      if (description !== undefined) data.cotisations[cotisationIndex].description = description.trim();
-      if (actif !== undefined) data.cotisations[cotisationIndex].actif = actif;
-
-      if (!fileManager.writeJSON('cotisations.json', data)) {
-        return res.status(500).json({ error: 'Erreur sauvegarde' });
-      }
-
-      res.json(data.cotisations[cotisationIndex]);
+      res.json(result.rows[0]);
     } catch (error) {
+      console.error('Erreur updateCotisation:', error);
+      if (error.code === '23505') { // Violation de contrainte unique
+        return res.status(400).json({ error: 'Une cotisation avec ce nom existe déjà' });
+      }
       res.status(500).json({ error: 'Erreur serveur' });
     }
   }
@@ -104,25 +104,15 @@ class CotisationsController {
     try {
       const { id } = req.params;
 
-      const data = fileManager.readJSON('cotisations.json');
-      if (!data) {
-        return res.status(500).json({ error: 'Erreur lecture des cotisations' });
-      }
-
-      const cotisationIndex = data.cotisations.findIndex(c => c.id === id);
-      if (cotisationIndex === -1) {
+      const result = await query('DELETE FROM cotisations WHERE id = $1 RETURNING id', [id]);
+      
+      if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Cotisation non trouvée' });
-      }
-
-      // Supprimer la cotisation
-      data.cotisations.splice(cotisationIndex, 1);
-
-      if (!fileManager.writeJSON('cotisations.json', data)) {
-        return res.status(500).json({ error: 'Erreur sauvegarde' });
       }
 
       res.json({ message: 'Cotisation supprimée avec succès' });
     } catch (error) {
+      console.error('Erreur deleteCotisation:', error);
       res.status(500).json({ error: 'Erreur serveur' });
     }
   }
