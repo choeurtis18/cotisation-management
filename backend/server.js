@@ -15,6 +15,17 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+];
+
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true,
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization']
+}));
+
 // Import routes
 const adherentsRoutes = require('./routes/adherents');
 const cotisationsRoutes = require('./routes/cotisations');
