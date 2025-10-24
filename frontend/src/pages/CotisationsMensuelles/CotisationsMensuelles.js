@@ -65,6 +65,7 @@ const CotisationsMensuelles = () => {
     try {
       setLoading(true);
       const response = await axios.get(`${API_URL}/cotisations-mensuelles`, {
+        withCredentials: true,
         params: {
           annee: selectedYear
         }
