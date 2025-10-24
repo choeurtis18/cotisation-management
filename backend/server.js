@@ -1,27 +1,26 @@
+require('dotenv').config();
+
 const express = require('express');
-const dotenv = require('dotenv');
 const cors = require('cors');
 const { testConnection } = require('./utils/database');
 
-dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 // ✅ Liste blanche des origines autorisées
 const allowedOrigins = [
-  process.env.FRONTEND_URL,               
-  'http://localhost:3000'                
+  process.env.FRONTEND_URL,
+  'http://localhost:3000'
 ];
 
-// ✅ Middleware CORS unique et propre
 app.use(cors({
   origin: function (origin, callback) {
-    // Autoriser les outils internes (Postman, curl) sans Origin
     if (!origin) return callback(null, true);
-
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     } else {
+      console.log(`CORS rejeté -> ${origin}`);
+      console.log(`Env FRONTEND_URL = ${process.env.FRONTEND_URL}`);
       return callback(new Error(`CORS: origine non autorisée -> ${origin}`));
     }
   },
@@ -30,9 +29,9 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// Middleware Express
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
 
 // Import routes
 const adherentsRoutes = require('./routes/adherents');
