@@ -1,10 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import Header from '../../components/Layout/Header';
 import Button from '../../components/Common/Button';
 import Table from '../../components/Common/Table';
 import Modal from '../../components/Common/Modal';
 import { cotisationsService, cotisationsMensuellesService, adherentsService } from '../../services/api';
+
+const MOIS_NAMES = [
+  'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
+];
+
+const MOIS_KEYS = [
+  'janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin',
+  'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre'
+];
 
 const CotisationDetail = () => {
   const API_URL = process.env.REACT_APP_API_URL;
@@ -20,6 +30,7 @@ const CotisationDetail = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingCotisation, setEditingCotisation] = useState(null);
+  const [monthlySummary, setMonthlySummary] = useState(null);
   const [formData, setFormData] = useState({
     adherentId: '',
     moyenneCotisation: '',
@@ -38,10 +49,6 @@ const CotisationDetail = () => {
 
   const currentYear = new Date().getFullYear();
   const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
-  const moisNames = [
-    'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
-    'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
-  ];
 
   const loadCotisation = useCallback(async () => {
     try {
@@ -94,12 +101,34 @@ const CotisationDetail = () => {
           avance
         };
       });
+      const totalsByMonth = MOIS_KEYS.reduce((acc, key) => {
+        acc[key] = cotisationsAvecCalculs.reduce((sum, row) => {
+          const value = parseFloat(row?.mois?.[key]) || 0;
+          return sum + value;
+        }, 0);
+        return acc;
+      }, {});
+      const totalAttenduGlobal = cotisationsAvecCalculs.reduce((sum, row) => sum + (row.totalAttendu || 0), 0);
+      const totalVerseeGlobal = cotisationsAvecCalculs.reduce((sum, row) => sum + (row.totalVersee || 0), 0);
+
+      setMonthlySummary(
+        cotisationsAvecCalculs.length > 0
+          ? {
+              isSummary: true,
+              mois: totalsByMonth,
+              totalAttendu: totalAttenduGlobal,
+              totalVersee: totalVerseeGlobal,
+              difference: totalVerseeGlobal - totalAttenduGlobal
+            }
+          : null
+      );
       
       setCotisationsMensuelles(cotisationsAvecCalculs);
       setError(null);
     } catch (err) {
       setError('Erreur lors du chargement des cotisations mensuelles');
       console.error(err);
+      setMonthlySummary(null);
     } finally {
       setLoading(false);
     }
@@ -248,68 +277,130 @@ const CotisationDetail = () => {
     return adherent ? `${adherent.prenom} ${adherent.nom}` : 'Adhérent inconnu';
   };
 
+  const formatMontant = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return '0,00€';
+    }
+    return `${numeric.toLocaleString('fr-FR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })}€`;
+  };
+
+  const renderStatus = (difference) => {
+    const numericDiff = Number(difference);
+    if (!Number.isFinite(numericDiff) || numericDiff === 0) {
+      return '-';
+    }
+
+    const formatted = formatMontant(Math.abs(numericDiff));
+    const prefix = numericDiff > 0 ? '+' : '-';
+
+    return (
+      <span className={`${numericDiff > 0 ? 'text-green-600' : 'text-red-600'} font-medium`}>
+        {`${prefix}${formatted}`}
+      </span>
+    );
+  };
+
   const columns = [
     {
       header: 'Adhérent',
-      render: (row) => getAdherentName(row)
+      render: (row) => {
+        if (row?.isSummary) {
+          return <span className="font-semibold">Total mois</span>;
+        }
+
+        const adherentId = row?.adherent_id ?? row?.adherentId;
+        const name = getAdherentName(row);
+
+        if (!adherentId) {
+          return name;
+        }
+
+        return (
+          <Link
+            to={`/adherents/${adherentId}`}
+            className="text-blue-600 hover:text-blue-700 hover:underline font-medium"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {name}
+          </Link>
+        );
+      }
     },
+    ...MOIS_NAMES.map((mois, index) => ({
+      header: mois,
+      render: (row) => {
+        const montant = row?.mois?.[MOIS_KEYS[index]] ?? 0;
+        const content = formatMontant(montant);
+        return row?.isSummary ? <span className="font-semibold">{content}</span> : content;
+      }
+    })),
     {
       header: 'Moyenne',
-      accessor: 'moyenne_cotisation',
-      render: (row) => `${row?.moyenne_cotisation || 0}€`
+      render: (row) =>
+        row?.isSummary
+          ? '-'
+          : formatMontant(row?.moyenne_cotisation)
     },
     {
       header: 'Total attendu',
-      accessor: 'totalAttendu',
-      render: (row) => `${row?.totalAttendu || 0}€`
+      render: (row) => {
+        const content = formatMontant(row?.totalAttendu);
+        return row?.isSummary ? <span className="font-semibold">{content}</span> : content;
+      }
     },
     {
       header: 'Total versé',
-      accessor: 'totalVersee',
-      render: (row) => `${row?.totalVersee || 0}€`
+      render: (row) => {
+        const content = formatMontant(row?.totalVersee);
+        return row?.isSummary ? <span className="font-semibold">{content}</span> : content;
+      }
     },
     {
-      header: 'Retard',
-      accessor: 'retard',
-      render: (row) => (row?.retard || 0) > 0 ? (
-        <span className="text-red-600 font-medium">{row.retard}€</span>
-      ) : '-'
-    },
-    {
-      header: 'Avance',
-      accessor: 'avance',
-      render: (row) => (row?.avance || 0) > 0 ? (
-        <span className="text-green-600 font-medium">{row.avance}€</span>
-      ) : '-'
+      header: 'Retard / Avance',
+      render: (row) => {
+        const diff = row?.isSummary
+          ? row?.difference
+          : (Number(row?.totalVersee) || 0) - (Number(row?.totalAttendu) || 0);
+        return renderStatus(diff);
+      }
     },
     {
       header: 'Actions',
-      render: (row) => (
-        <div className="flex space-x-2">
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (row) handleEdit(row);
-            }}
-          >
-            Modifier
-          </Button>
-          <Button
-            size="sm"
-            variant="danger"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (row) handleDeleteCotisationMensuelle(row);
-            }}
-          >
-            Supprimer
-          </Button>
-        </div>
-      )
+      render: (row) =>
+        row?.isSummary ? null : (
+          <div className="flex space-x-2">
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (row) handleEdit(row);
+              }}
+            >
+              Modifier
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (row) handleDeleteCotisationMensuelle(row);
+              }}
+            >
+              Supprimer
+            </Button>
+          </div>
+        )
     }
   ];
+
+  const tableData = monthlySummary
+    ? [...cotisationsMensuelles, monthlySummary]
+    : cotisationsMensuelles;
 
   if (!cotisation && !loading) {
     return (
@@ -416,7 +507,7 @@ const CotisationDetail = () => {
           ) : (
             <Table
               columns={columns}
-              data={cotisationsMensuelles}
+              data={tableData}
             />
           )}
         </div>
@@ -470,8 +561,8 @@ const CotisationDetail = () => {
               Montants mensuels
             </label>
             <div className="grid grid-cols-4 gap-3">
-              {moisNames.map((mois, index) => {
-                const moisKey = mois.toLowerCase().replace('é', 'e').replace('û', 'u');
+              {MOIS_NAMES.map((mois, index) => {
+                const moisKey = MOIS_KEYS[index];
                 return (
                   <div key={mois}>
                     <label className="block text-xs text-gray-500 mb-1">{mois}</label>
@@ -537,8 +628,8 @@ const CotisationDetail = () => {
               Montants mensuels
             </label>
             <div className="grid grid-cols-4 gap-3">
-              {moisNames.map((mois, index) => {
-                const moisKey = mois.toLowerCase().replace('é', 'e').replace('û', 'u');
+              {MOIS_NAMES.map((mois, index) => {
+                const moisKey = MOIS_KEYS[index];
                 return (
                   <div key={mois}>
                     <label className="block text-xs text-gray-500 mb-1">{mois}</label>

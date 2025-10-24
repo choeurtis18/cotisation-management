@@ -5,6 +5,16 @@ import Button from '../../components/Common/Button';
 import Modal from '../../components/Common/Modal';
 import { adherentsService, cotisationsService, cotisationsMensuellesService } from '../../services/api';
 
+const MOIS_NAMES = [
+  'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
+];
+
+const MOIS_KEYS = [
+  'janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin',
+  'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre'
+];
+
 const AdherentDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -27,10 +37,16 @@ const AdherentDetail = () => {
   // Génération dynamique de la liste des années
   const currentYear = new Date().getFullYear();
   const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
-  const moisNames = [
-    'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
-    'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
-  ];
+  const formatMontant = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return '0€';
+    }
+    return `${numeric.toLocaleString('fr-FR', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    })}€`;
+  };
 
   const loadAdherent = useCallback(async () => {
     try {
@@ -58,7 +74,34 @@ const AdherentDetail = () => {
     try {
       setLoading(true);
       const response = await adherentsService.getCotisationsByYear(id, selectedYear);
-      setCotisations(response.data);
+
+      const formattedCotisations = response.data.map((cotisation) => {
+        const moyenneCotisation = parseFloat(cotisation.moyenne_cotisation ?? cotisation.moyenneCotisation) || 0;
+        const moisData = MOIS_KEYS.reduce((acc, key) => {
+          const value = cotisation?.mois?.[key];
+          acc[key] = parseFloat(value) || 0;
+          return acc;
+        }, {});
+
+        const totalVersee = Object.values(moisData).reduce((sum, montant) => sum + montant, 0);
+        const totalAttendu = moyenneCotisation * 12;
+        const difference = totalVersee - totalAttendu;
+
+        return {
+          ...cotisation,
+          cotisationId: cotisation.cotisation_id ?? cotisation.cotisationId,
+          cotisationNom: cotisation.cotisation_nom ?? cotisation.cotisationNom,
+          moyenneCotisation,
+          mois: moisData,
+          totalVersee,
+          totalAttendu,
+          retard: difference < 0 ? Math.abs(difference) : 0,
+          avance: difference > 0 ? difference : 0,
+          difference
+        };
+      });
+
+      setCotisations(formattedCotisations);
       setError(null);
     } catch (err) {
       setError('Erreur lors du chargement des cotisations de l\'adhérent');
@@ -105,7 +148,7 @@ const AdherentDetail = () => {
   };
 
   const handleDeleteCotisation = async (cotisation) => {
-    const cotisationName = getCotisationName(cotisation.cotisationId);
+    const cotisationName = getCotisationName(cotisation.cotisationId, cotisation.cotisationNom);
     if (window.confirm(`Supprimer la cotisation "${cotisationName}" pour ${selectedYear} ?`)) {
       try {
         await cotisationsMensuellesService.delete(cotisation.id);
@@ -117,9 +160,15 @@ const AdherentDetail = () => {
     }
   };
 
-  const getCotisationName = (cotisationId) => {
+  const getCotisationName = (cotisationId, fallbackName) => {
     const cotisation = allCotisations.find(c => c.id === cotisationId);
-    return cotisation ? cotisation.nom : 'Cotisation inconnue';
+    if (cotisation) {
+      return cotisation.nom;
+    }
+    if (fallbackName) {
+      return fallbackName;
+    }
+    return 'Cotisation inconnue';
   };
 
   if (!adherent && !loading) {
@@ -210,7 +259,7 @@ const AdherentDetail = () => {
                       <div>
                         <a href={`/cotisations/${cotisation.cotisationId}`}>
                           <h3 className="text-lg font-medium text-gray-900">
-                            {getCotisationName(cotisation.cotisationId)}
+                            {getCotisationName(cotisation.cotisationId, cotisation.cotisationNom)}
                           </h3>
                         </a>
                         <p className="text-sm text-gray-500">Année {selectedYear}</p>
@@ -219,22 +268,22 @@ const AdherentDetail = () => {
                         <div className="overflow-x-auto">
                           <div className="flex space-x-4 text-sm min-w-max">
                             <span className="text-gray-600 whitespace-nowrap">
-                              Moyenne: <span className="font-medium">{cotisation.moyenneCotisation}€</span>
+                              Moyenne: <span className="font-medium">{formatMontant(cotisation.moyenneCotisation)}</span>
                             </span>
                             <span className="text-gray-600 whitespace-nowrap">
-                              Total attendu: <span className="font-medium">{cotisation.totalAttendu}€</span>
+                              Total attendu: <span className="font-medium">{formatMontant(cotisation.totalAttendu)}</span>
                             </span>
                             <span className="text-gray-600 whitespace-nowrap">
-                              Total versé: <span className="font-medium">{cotisation.totalVersee}€</span>
+                              Total versé: <span className="font-medium">{formatMontant(cotisation.totalVersee)}</span>
                             </span>
                             {cotisation.retard > 0 && (
                               <span className="text-red-600 whitespace-nowrap">
-                                Retard: <span className="font-medium">{cotisation.retard}€</span>
+                                Retard: <span className="font-medium">{formatMontant(cotisation.retard)}</span>
                               </span>
                             )}
                             {cotisation.avance > 0 && (
                               <span className="text-green-600 whitespace-nowrap">
-                                Avance: <span className="font-medium">{cotisation.avance}€</span>
+                                Avance: <span className="font-medium">{formatMontant(cotisation.avance)}</span>
                               </span>
                             )}
                           </div>
@@ -262,8 +311,8 @@ const AdherentDetail = () => {
                   <div className="p-6">
                     <div className="overflow-x-auto">
                       <div className="grid grid-cols-12 gap-4 min-w-[800px]">
-                        {moisNames.map((mois, index) => {
-                          const moisKey = mois.toLowerCase().replace('é', 'e').replace('û', 'u');
+                        {MOIS_NAMES.map((mois, index) => {
+                          const moisKey = MOIS_KEYS[index];
                           const montant = cotisation.mois[moisKey] || 0;
                           return (
                             <div key={mois} className="text-center">
@@ -275,7 +324,7 @@ const AdherentDetail = () => {
                                   ? 'bg-green-100 text-green-800' 
                                   : 'bg-red-100 text-red-800'
                               }`}>
-                                {montant}€
+                                {formatMontant(montant)}
                               </div>
                             </div>
                           );
@@ -299,7 +348,7 @@ const AdherentDetail = () => {
             <form onSubmit={handleUpdateCotisation} className="space-y-4">
               <div className="mb-4 p-3 bg-gray-50 rounded">
                 <p className="text-sm text-gray-600">
-                  <strong>Cotisation:</strong> {getCotisationName(editingCotisation.cotisationId)}
+                  <strong>Cotisation:</strong> {getCotisationName(editingCotisation.cotisationId, editingCotisation.cotisationNom)}
                 </p>
                 <p className="text-sm text-gray-600">
                   <strong>Année:</strong> {selectedYear}
@@ -326,8 +375,8 @@ const AdherentDetail = () => {
                   Montants mensuels
                 </label>
                 <div className="grid grid-cols-4 gap-3">
-                  {moisNames.map((mois, index) => {
-                    const moisKey = mois.toLowerCase().replace('é', 'e').replace('û', 'u');
+                  {MOIS_NAMES.map((mois, index) => {
+                    const moisKey = MOIS_KEYS[index];
                     return (
                       <div key={mois}>
                         <label className="block text-xs text-gray-500 mb-1">{mois}</label>
